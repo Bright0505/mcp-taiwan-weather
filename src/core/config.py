@@ -40,9 +40,22 @@ class HTTPConfig:
         return []
 
 
+class MCPSecurityConfig:
+    """MCP transport security configuration."""
+
+    def __init__(self):
+        self.enable_dns_rebinding_protection = (
+            os.getenv("MCP_ENABLE_DNS_PROTECTION", "false").lower() == "true"
+        )
+
+
 def get_weather_config() -> WeatherConfig:
     return WeatherConfig()
 
 
 def get_http_config() -> HTTPConfig:
     return HTTPConfig()
+
+
+def get_mcp_security_config() -> MCPSecurityConfig:
+    return MCPSecurityConfig()

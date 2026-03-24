@@ -49,6 +49,7 @@ list_counties()
 | `HTTP_PORT` | | `8000` | HTTP 模式端口 |
 | `CACHE_TTL_HOURS` | | `24` | 快取有效期（小時）|
 | `CORS_ALLOWED_ORIGINS` | | `localhost:3000,8000`（dev）| CORS 允許來源，逗號分隔 |
+| `MCP_ENABLE_DNS_PROTECTION` | | `false` | 啟用 DNS rebinding 保護；Docker 內網建議設為 `false` |
 
 ---
 
@@ -200,10 +201,10 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 | `GET /health` | Docker | Healthcheck，回傳 `{"status":"ok"}` |
 | `GET /docs` | 人 | Swagger UI |
 | `GET /openapi.json` | 人 | OpenAPI 規格 |
-| `GET /sse/` | MCPO | MCP SSE 連線建立 |
-| `POST /sse/messages` | MCPO | MCP 訊息接收 |
+| `GET /sse/` | MCPO | MCP SSE 連線建立（由 ASGI mount 處理） |
+| `POST /sse/messages` | MCPO | MCP 訊息接收（由 ASGI mount 處理） |
 
-> MCPO 只使用 `/sse/` 與 `/sse/messages`，其餘端點為人工管理與 Docker healthcheck 用途。
+> `/sse/*` 路徑完全由 `SseMCPServer` ASGI app 接管（`app.mount("/sse", mcp_asgi_app)`），FastAPI 不介入這兩個端點。其餘端點為人工管理與 Docker healthcheck 用途。
 
 ---
 
