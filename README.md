@@ -1,4 +1,4 @@
-# mcp-weather
+# mcp-taiwan-weather
 
 台灣一週天氣預報 MCP Server，資料來源為[中央氣象署開放資料平台](https://opendata.cwa.gov.tw/)。
 
@@ -93,7 +93,7 @@ docker-compose up mcp-weather
 ```yaml
 mcp-weather-http:
   build:
-    context: /path/to/mcp-weather
+    context: /path/to/mcp-taiwan-weather
     target: production
   container_name: mcp-weather-http
   ports:
@@ -139,20 +139,40 @@ MCPO config（`mcpo-config.json`）加入：
 
 編輯 `~/Library/Application Support/Claude/claude_desktop_config.json`：
 
+**本機 Python**
+
 ```json
 {
   "mcpServers": {
     "mcp-weather": {
-      "command": "/path/to/mcp-weather/.venv/bin/python",
-      "args": ["/path/to/mcp-weather/src/main.py"],
+      "command": "/path/to/mcp-taiwan-weather/.venv/bin/python",
+      "args": ["/path/to/mcp-taiwan-weather/src/main.py"],
       "env": {
-        "PYTHONPATH": "/path/to/mcp-weather/src",
+        "PYTHONPATH": "/path/to/mcp-taiwan-weather/src",
         "CWA_API_KEY": "CWA-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       }
     }
   }
 }
 ```
+
+**Docker 容器（exec 進執行中容器）**
+
+```json
+{
+  "mcpServers": {
+    "mcp-weather": {
+      "command": "docker",
+      "args": [
+        "exec", "-i", "mcp-weather-dev",
+        "python", "-m", "server"
+      ]
+    }
+  }
+}
+```
+
+> `mcp-weather-dev` 為容器名稱，需先確認容器已啟動：`docker-compose up mcp-weather`
 
 ### MCPO（本機 HTTP/SSE 模式）
 
@@ -190,7 +210,7 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 ## 專案結構
 
 ```
-mcp-weather/
+mcp-taiwan-weather/
 ├── pyproject.toml
 ├── Dockerfile
 ├── docker-compose.yml

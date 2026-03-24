@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp-weather"
+name = "mcp-taiwan-weather"
 version = "1.0.0"
 description = "MCP server for Taiwan weekly weather forecast (CWA Open Data)"
 authors = [{name = "BrightSu"}]
