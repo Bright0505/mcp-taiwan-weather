@@ -72,7 +72,7 @@ PYTHONPATH=src .venv/bin/python src/main.py
 PYTHONPATH=src .venv/bin/python src/main.py --http --port 8000
 ```
 
-### Docker
+### Docker（獨立啟動）
 
 ```bash
 # 複製設定檔
@@ -84,6 +84,51 @@ docker-compose up mcp-weather-http
 
 # STDIO 模式
 docker-compose up mcp-weather
+```
+
+### Docker（整合 open-webui）
+
+在 open-webui 的 `docker-compose.yaml` 加入以下 service：
+
+```yaml
+mcp-weather-http:
+  build:
+    context: /path/to/mcp-weather
+    target: production
+  container_name: mcp-weather-http
+  ports:
+    - "8101:8001"
+  env_file:
+    - .env                        # CWA_API_KEY 從此讀取
+  environment:
+    - PYTHONPATH=/app/src
+    - PYTHONUNBUFFERED=1
+    - HTTP_HOST=0.0.0.0
+    - HTTP_PORT=8001
+  command: ["python", "-m", "http_server"]
+  restart: unless-stopped
+  networks:
+    - ollama-network
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 20s
+```
+
+MCPO config（`mcpo-config.json`）加入：
+
+```json
+{
+  "mcpServers": {
+    "mcp-weather": {
+      "url": "http://mcp-weather-http:8001/sse/"
+    }
+  }
+}
 ```
 
 ---
@@ -109,9 +154,13 @@ docker-compose up mcp-weather
 }
 ```
 
-### MCPO（HTTP/SSE 模式）
+### MCPO（本機 HTTP/SSE 模式）
 
-先啟動 HTTP server（預設 port 8000），再設定 MCPO：
+先啟動 HTTP server，再設定 MCPO：
+
+```bash
+PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
+```
 
 ```json
 {
@@ -125,13 +174,16 @@ docker-compose up mcp-weather
 
 ## API 端點（HTTP 模式）
 
-| 端點 | 說明 |
-|------|------|
-| `GET /` | 伺服器資訊 |
-| `GET /docs` | Swagger UI |
-| `GET /openapi.json` | OpenAPI 規格 |
-| `GET /sse/` | MCP SSE 連線（MCPO 用）|
-| `POST /sse/messages` | MCP 訊息接收 |
+| 端點 | 用途 | 說明 |
+|------|------|------|
+| `GET /` | 人 | 伺服器資訊與端點列表 |
+| `GET /health` | Docker | Healthcheck，回傳 `{"status":"ok"}` |
+| `GET /docs` | 人 | Swagger UI |
+| `GET /openapi.json` | 人 | OpenAPI 規格 |
+| `GET /sse/` | MCPO | MCP SSE 連線建立 |
+| `POST /sse/messages` | MCPO | MCP 訊息接收 |
+
+> MCPO 只使用 `/sse/` 與 `/sse/messages`，其餘端點為人工管理與 Docker healthcheck 用途。
 
 ---
 

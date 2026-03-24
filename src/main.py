@@ -76,10 +76,16 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
             "name": "MCP Weather Server",
             "version": "1.0.0",
             "endpoints": {
+                "health": "/health",
                 "mcp_sse": "/sse/",
                 "docs": "/docs",
             },
         }
+
+    @app.get("/health", summary="健康檢查", tags=["General"])
+    async def health():
+        """Docker healthcheck 用端點，回傳服務狀態。"""
+        return {"status": "ok", "service": "mcp-weather"}
 
     @app.get(
         "/sse/",
