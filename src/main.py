@@ -87,38 +87,6 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
         """Docker healthcheck 用端點，回傳服務狀態。"""
         return {"status": "ok", "service": "mcp-weather"}
 
-    @app.get(
-        "/sse/",
-        summary="MCP SSE 連線",
-        description=(
-            "建立 MCP Server-Sent Events 連線。\n\n"
-            "供 MCPO 或其他 MCP 客戶端使用，建立後伺服器透過 SSE 串流推送 MCP 訊息。\n\n"
-            "**實際連線由底層 ASGI app 處理，此路由僅供文件展示。**"
-        ),
-        tags=["MCP SSE"],
-        responses={200: {"description": "SSE 串流連線建立成功"}},
-        include_in_schema=True,
-    )
-    async def sse_connect_doc():
-        """文件用途，實際請求由 ASGI mount 處理。"""
-        return Response(status_code=200)
-
-    @app.post(
-        "/sse/messages",
-        summary="MCP 訊息接收",
-        description=(
-            "接收來自 MCP 客戶端的訊息（JSON-RPC 格式）。\n\n"
-            "與 `GET /sse/` 配合使用，客戶端透過此端點向伺服器發送 tool call 等請求。\n\n"
-            "**實際處理由底層 ASGI app 負責，此路由僅供文件展示。**"
-        ),
-        tags=["MCP SSE"],
-        responses={202: {"description": "訊息已接受"}},
-        include_in_schema=True,
-    )
-    async def sse_messages_doc():
-        """文件用途，實際請求由 ASGI mount 處理。"""
-        return Response(status_code=202)
-
     mcp_sse_server = SseMCPServer(cwa_client, messages_path="/messages")
     mcp_asgi_app = mcp_sse_server.create_asgi_app()
     app.mount("/sse", mcp_asgi_app)

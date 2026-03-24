@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Optional
 
-from mcp.server.sse import SseServerTransport
+from mcp.server.sse import SseServerTransport, TransportSecuritySettings
 
 from protocol.base_server import BaseMCPServer
 from weather.cwa_client import CwaClient
@@ -20,7 +20,9 @@ class SseMCPServer(BaseMCPServer):
 
     def __init__(self, cwa_client: CwaClient, messages_path: str = "/messages"):
         super().__init__(cwa_client)
-        self.sse_transport = SseServerTransport(messages_path)
+        enable_dns_protection = os.getenv("MCP_ENABLE_DNS_PROTECTION", "false").lower() == "true"
+        security_settings = TransportSecuritySettings(enable_dns_rebinding_protection=enable_dns_protection)
+        self.sse_transport = SseServerTransport(messages_path, security_settings=security_settings)
         logger.info(f"SSE MCP server initialized with messages path: {messages_path}")
 
     async def handle_sse_connection(self, scope, receive, send) -> None:
