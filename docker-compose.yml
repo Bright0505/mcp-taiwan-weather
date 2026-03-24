@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # MCP Weather Server - STDIO mode
+  mcp-weather:
+    build:
+      context: .
+      target: development
+    container_name: mcp-weather-dev
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app/src
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+    stdin_open: true
+    tty: true
+    network_mode: host
+    command: ["python", "-m", "server"]
+    restart: unless-stopped
+
+  # MCP Weather HTTP Server - SSE mode (for MCPO)
+  mcp-weather-http:
+    build:
+      context: .
+      target: development
+    container_name: mcp-weather-http-dev
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app/src
+      PYTHONUNBUFFERED: 1
+      HTTP_PORT: "8001"
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+    ports:
+      - "${HTTP_PORT:-8001}:8001"
+    command: ["python", "-m", "http_server"]
+    restart: unless-stopped
