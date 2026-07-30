@@ -10,7 +10,10 @@ authors = [{name = "BrightSu"}]
 license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.13.1",
+    # 上限鎖在 2.0.0：mcp 2.0.0 移除低階 Server 的 decorator handler
+    # (@server.list_tools() 等)，改為建構子 on_* 參數，會導致啟動失敗。
+    # 完成 v2 遷移後才可放寬。
+    "mcp>=1.13.1,<2.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
