@@ -1,4 +1,4 @@
-"""HTTP/SSE mode standalone entry point.
+"""HTTP mode standalone entry point (MCP over Streamable HTTP + REST).
 
 Usage:
     python -m http_server

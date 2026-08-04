@@ -4,7 +4,13 @@
 
 支援兩種運行模式：
 - **STDIO 模式** — 直接整合 Claude Desktop
-- **HTTP/SSE 模式** — 透過 [MCPO](https://github.com/open-webui/mcpo) proxy 整合
+- **HTTP 模式（Streamable HTTP）** — 透過 [MCPO](https://github.com/open-webui/mcpo) proxy
+  或任何支援 MCP Streamable HTTP 的客戶端整合
+
+> **Transport**：2026-08-04 起改用 **Streamable HTTP**（端點 `/mcp/`），
+> 取代舊的 SSE transport。`/sse/` 已不存在（回 404）。
+> 同一個 `/mcp/` 端點同時服務 `initialize` handshake 世代與無狀態的
+> **2026-07-28** 世代，世代判別由 MCP SDK 處理。
 
 ## 功能
 
@@ -69,7 +75,7 @@ python3 -m venv .venv
 # 3a. STDIO 模式
 PYTHONPATH=src .venv/bin/python src/main.py
 
-# 3b. HTTP/SSE 模式
+# 3b. HTTP 模式（Streamable HTTP）
 PYTHONPATH=src .venv/bin/python src/main.py --http --port 8000
 ```
 
@@ -80,7 +86,7 @@ PYTHONPATH=src .venv/bin/python src/main.py --http --port 8000
 cp .env.example .env
 # 編輯 .env，填入 CWA_API_KEY
 
-# HTTP/SSE 模式（供 MCPO 使用）
+# HTTP 模式（Streamable HTTP，供 MCPO 使用）
 docker-compose up mcp-weather-http
 
 # STDIO 模式
@@ -126,11 +132,16 @@ MCPO config（`mcpo-config.json`）加入：
 {
   "mcpServers": {
     "mcp-weather": {
-      "url": "http://mcp-weather-http:8001/sse/"
+      "type": "streamable-http",
+      "url": "http://mcp-weather-http:8001/mcp/"
     }
   }
 }
 ```
+
+> **`type` 必填。** 只給 `url` 會落在 MCPO 自己註解為
+> `# Fallback for old SSE config` 的分支，該分支不傳 `auth`，
+> 且本模組已不再提供 `/sse/` 端點。
 
 ---
 
@@ -175,7 +186,7 @@ MCPO config（`mcpo-config.json`）加入：
 
 > `mcp-weather-dev` 為容器名稱，需先確認容器已啟動：`docker-compose up mcp-weather`
 
-### MCPO（本機 HTTP/SSE 模式）
+### MCPO（本機 HTTP 模式）
 
 先啟動 HTTP server，再設定 MCPO：
 
@@ -186,7 +197,8 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 ```json
 {
   "mcp-weather": {
-    "url": "http://localhost:8000/sse/"
+    "type": "streamable-http",
+    "url": "http://localhost:8000/mcp/"
   }
 }
 ```
@@ -201,10 +213,22 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 | `GET /health` | Docker | Healthcheck，回傳 `{"status":"ok"}` |
 | `GET /docs` | 人 | Swagger UI |
 | `GET /openapi.json` | 人 | OpenAPI 規格 |
-| `GET /sse/` | MCPO | MCP SSE 連線建立（由 ASGI mount 處理） |
-| `POST /sse/messages` | MCPO | MCP 訊息接收（由 ASGI mount 處理） |
+| `POST /mcp/` | MCPO / MCP 客戶端 | MCP over Streamable HTTP（由 ASGI mount 處理） |
 
-> `/sse/*` 路徑完全由 `SseMCPServer` ASGI app 接管（`app.mount("/sse", mcp_asgi_app)`），FastAPI 不介入這兩個端點。其餘端點為人工管理與 Docker healthcheck 用途。
+> `/mcp/*` 完全由 MCP SDK 的 `StreamableHTTPSessionManager` ASGI app 接管
+> （`app.mount("/mcp", mcp_server.create_asgi_app())`），FastAPI 不介入。
+> 其餘端點為人工管理與 Docker healthcheck 用途。
+>
+> 以 `stateless=True` + `json_response=True` 執行：回應是 `application/json`，
+> 不是 `text/event-stream`；沒有伺服器端 session，因此前面**不需要 sticky routing**。
+>
+> **2026-07-28 世代的請求要求**（SEP-2243）：必須帶 `Mcp-Method` header
+> （呼叫工具時另帶 `Mcp-Name`），且 `params._meta` 需含
+> `io.modelcontextprotocol/protocolVersion`、`/clientInfo`、`/clientCapabilities`。
+> 缺信封回 `400 / -32602`；header 與 body 的 method 不一致回 `400 / -32020`。
+> handshake 世代（MCPO 目前走這條）維持原本的 `initialize` 流程，不受影響。
+>
+> 舊的 `GET /sse/` 與 `POST /sse/messages` **已移除**，現在回 404。
 
 ---
 
@@ -216,23 +240,41 @@ mcp-taiwan-weather/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
-└── src/
-    ├── main.py              # 統一入口（--http flag 切換模式）
-    ├── server.py            # STDIO 獨立入口
-    ├── http_server.py       # HTTP 獨立入口
-    ├── protocol/
-    │   ├── base_server.py   # Transport-agnostic MCP 核心
-    │   ├── stdio_server.py  # STDIO transport
-    │   └── sse_server.py    # SSE/HTTP transport + CORS
-    ├── core/
-    │   └── config.py        # 環境變數設定
-    ├── weather/
-    │   ├── cache.py         # TTL 快取（24 小時）
-    │   ├── cwa_client.py    # CWA API 呼叫 + 回應格式化
-    │   └── dataset_mapping.py  # 縣市 → Dataset ID 對應
-    └── tools/
-        └── definitions.py   # MCP Tool 定義與 handler
+├── constraints.txt          # 相依版本鎖定（pip install -c）
+├── src/
+│   ├── main.py              # 統一入口（--http flag 切換模式）
+│   ├── server.py            # STDIO 獨立入口
+│   ├── http_server.py       # HTTP 獨立入口（委派給 main.run_http_mode）
+│   ├── protocol/
+│   │   ├── base_server.py       # Transport-agnostic MCP 核心
+│   │   ├── stdio_server.py      # STDIO transport
+│   │   └── streamable_server.py # Streamable HTTP transport
+│   ├── core/
+│   │   └── config.py        # 環境變數設定
+│   ├── weather/
+│   │   ├── cache.py         # TTL 快取（24 小時）
+│   │   ├── cwa_client.py    # CWA API 呼叫 + 回應格式化
+│   │   └── dataset_mapping.py  # 縣市 → Dataset ID 對應
+│   └── tools/
+│       └── definitions.py   # MCP Tool 定義與 handler
+└── tests/
+    └── integration/
+        └── test_mcp_protocol.py  # 協議層測試（含兩世代相容性）
 ```
+
+CORS 由 `main.py` 的 `CORSMiddleware` 統一處理，`allow_headers` 已放行
+`Mcp-Method` / `Mcp-Name` / `MCP-Protocol-Version` / `Mcp-Session-Id`
+（舊版由 `sse_server.py` 自行手寫注入 header，該檔已移除）。
+
+## 測試
+
+```bash
+pytest tests -q
+```
+
+`tests/integration/test_mcp_protocol.py` 涵蓋工具定義契約、handler 契約，
+以及**同一 `/mcp/` 端點對兩個協議世代都要能服務**的相容性 —— 改動 transport
+或升級 MCP SDK 後必跑。
 
 ## 資料來源
 
