@@ -144,7 +144,11 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="MCP Weather Server")
-    parser.add_argument("--http", action="store_true", help="Run in HTTP/SSE mode")
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Run in HTTP mode (MCP over Streamable HTTP at /mcp/ + REST)",
+    )
     parser.add_argument("--host", type=str, default=None)
     parser.add_argument("--port", type=int, default=None)
     args = parser.parse_args()
