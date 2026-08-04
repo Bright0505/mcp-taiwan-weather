@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+
+from mcp.server.runner import serve_dual_era_loop
 from mcp.server.stdio import stdio_server
 
 from protocol.base_server import BaseMCPServer
@@ -16,12 +18,17 @@ class StdioMCPServer(BaseMCPServer):
 
     async def run(self) -> None:
         logger.info("Starting STDIO MCP server")
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options(),
-            )
+        # serve_dual_era_loop serves both the initialize-handshake era and the stateless
+        # 2026-07-28 era. lifespan_state is a required keyword argument, so the server
+        # lifespan has to be entered first to obtain it.
+        async with self.server.lifespan(self.server) as lifespan_state:
+            async with stdio_server() as (read_stream, write_stream):
+                await serve_dual_era_loop(
+                    self.server,
+                    read_stream,
+                    write_stream,
+                    lifespan_state=lifespan_state,
+                )
 
 
 async def run_stdio_server(cwa_client: CwaClient) -> None:
