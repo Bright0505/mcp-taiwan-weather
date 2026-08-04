@@ -2,7 +2,7 @@
 
 Usage:
     python main.py          # STDIO mode (default)
-    python main.py --http   # HTTP/SSE mode
+    python main.py --http   # HTTP mode (MCP over Streamable HTTP)
     python main.py --http --host 0.0.0.0 --port 8000
 """
 
@@ -46,12 +46,21 @@ async def run_stdio_mode() -> None:
 async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
     logger.info(f"Starting MCP Weather Server in HTTP mode on {host}:{port}")
 
+    import contextlib
+
     import uvicorn
-    from fastapi import FastAPI, Response
-    from fastapi.responses import JSONResponse
-    from protocol.sse_server import SseMCPServer
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from protocol.streamable_server import StreamableMCPServer
 
     cwa_client = _build_cwa_client()
+    mcp_server = StreamableMCPServer(cwa_client)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # StreamableHTTPSessionManager must be running for the endpoint to serve.
+        async with mcp_server.session_manager.run():
+            yield
 
     app = FastAPI(
         title="MCP Weather API",
@@ -59,14 +68,46 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
         description=(
             "台灣一週天氣預報 MCP Server。\n\n"
             "## MCP Tools\n"
-            "透過 SSE 端點（`/sse/`）提供以下 MCP tools：\n\n"
+            "透過 Streamable HTTP 端點（`/mcp/`）提供以下 MCP tools：\n\n"
             "| Tool | 說明 | 參數 |\n"
             "|------|------|------|\n"
             "| `get_weekly_forecast` | 取得一週天氣預報 | `county`（必填）、`district`（選填）|\n"
             "| `list_counties` | 列出所有可查詢縣市 | 無 |\n\n"
             "## 快取\n"
-            "每個縣市的查詢結果快取 24 小時，期間不重複呼叫 CWA API。"
+            "每個縣市的查詢結果快取 24 小時，期間不重複呼叫 CWA API。\n\n"
+            "## 協議世代\n"
+            "同一個端點同時服務 initialize handshake 世代與無狀態的 2026-07-28 世代。"
         ),
+        lifespan=lifespan,
+    )
+
+    # MCP 2026-07-28 (SEP-2243) requires Mcp-Method / Mcp-Name on requests and uses
+    # MCP-Protocol-Version to carry the era; a browser client cannot send them unless
+    # the preflight allows them. Replaces the hand-written CORS handling that lived in
+    # the old SSE ASGI app.
+    _cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if _cors_env:
+        _allowed_origins = [o.strip() for o in _cors_env.split(",")]
+    elif os.getenv("ENVIRONMENT", "development") == "development":
+        _allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
+        logger.info("使用開發環境 CORS 預設值")
+    else:
+        _allowed_origins = []
+        logger.warning("生產環境未設定 CORS_ALLOWED_ORIGINS，CORS 已停用")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "Mcp-Method",
+            "Mcp-Name",
+            "MCP-Protocol-Version",
+            "Mcp-Session-Id",
+        ],
     )
 
     @app.get("/", summary="伺服器資訊", tags=["General"])
@@ -77,7 +118,7 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
             "version": "1.0.0",
             "endpoints": {
                 "health": "/health",
-                "mcp_sse": "/sse/",
+                "mcp": "/mcp/",
                 "docs": "/docs",
             },
         }
@@ -87,10 +128,8 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
         """Docker healthcheck 用端點，回傳服務狀態。"""
         return {"status": "ok", "service": "mcp-weather"}
 
-    mcp_sse_server = SseMCPServer(cwa_client, messages_path="/messages")
-    mcp_asgi_app = mcp_sse_server.create_asgi_app()
-    app.mount("/sse", mcp_asgi_app)
-    logger.info("MCP SSE server mounted at /sse/")
+    app.mount("/mcp", mcp_server.create_asgi_app())
+    logger.info("MCP server mounted at /mcp/ (Streamable HTTP, dual-era)")
 
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
