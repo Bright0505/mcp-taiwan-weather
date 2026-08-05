@@ -112,10 +112,14 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
 
     @app.get("/", summary="伺服器資訊", tags=["General"])
     async def root():
-        """回傳伺服器基本資訊與可用端點列表。"""
+        """回傳伺服器基本資訊、設定狀態與可用端點列表。"""
         return {
             "name": "MCP Weather Server",
             "version": "1.0.0",
+            # 缺 CWA_API_KEY 時不再讓程序結束（否則整個 MCPO 起不來），
+            # 改在這裡把降級狀態攤開，讓維運看得到。
+            "configured": cwa_client.api_key != "",
+            "status": "ok" if cwa_client.api_key else "degraded: CWA_API_KEY not set",
             "endpoints": {
                 "health": "/health",
                 "mcp": "/mcp/",
@@ -125,8 +129,18 @@ async def run_http_mode(host: str = "0.0.0.0", port: int = 8000) -> None:
 
     @app.get("/health", summary="健康檢查", tags=["General"])
     async def health():
-        """Docker healthcheck 用端點，回傳服務狀態。"""
-        return {"status": "ok", "service": "mcp-weather"}
+        """Docker healthcheck 用端點。
+
+        缺 CWA_API_KEY 時仍回 ok —— 這是刻意的：MCPO 以
+        `depends_on: condition: service_healthy` 等這個端點，回 unhealthy 會讓
+        MCPO 永遠不啟動，連帶讓其他模組的工具全部消失。設定問題改由 `/` 的
+        `status` 欄位與工具回應本身呈現。
+        """
+        return {
+            "status": "ok",
+            "service": "mcp-weather",
+            "configured": cwa_client.api_key != "",
+        }
 
     app.mount("/mcp", mcp_server.create_asgi_app())
     logger.info("MCP server mounted at /mcp/ (Streamable HTTP, dual-era)")

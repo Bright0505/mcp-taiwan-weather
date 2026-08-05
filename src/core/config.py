@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,9 +15,29 @@ class WeatherConfig:
         self.api_key = os.getenv("CWA_API_KEY", "")
         self.cache_ttl_hours = int(os.getenv("CACHE_TTL_HOURS", "24"))
 
+        # Deliberately does NOT sys.exit on a missing key.
+        #
+        # This process sits behind MCPO, which declares
+        # `depends_on: mcp-weather-http: condition: service_healthy`. Exiting here
+        # made the container unhealthy, that condition never became true, and MCPO
+        # never started -- so a missing weather key took down *every* module's tools
+        # (81 of them), not just this one. A per-module misconfiguration must not be
+        # able to do that.
+        #
+        # Instead the server starts, `/` reports degraded, and the tools return an
+        # explicit configuration error when called. The trade-off is deliberate: a
+        # misconfigured module now starts "healthy" while being non-functional, so
+        # the failure has to be visible in the tool response rather than at startup.
         if not self.api_key:
-            logger.error("CWA_API_KEY environment variable is required")
-            sys.exit(1)
+            logger.error(
+                "CWA_API_KEY is not set -- weather tools will return a configuration "
+                "error. The server still starts so that MCPO (and every other "
+                "module's tools) stay available."
+            )
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
 
 
 class HTTPConfig:

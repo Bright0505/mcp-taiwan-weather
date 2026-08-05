@@ -64,10 +64,24 @@ class CwaClient:
         url = f"{BASE_URL}/{dataset_id}"
         params = {"Authorization": self.api_key}
 
+        if not self.api_key:
+            return {
+                "error": True,
+                "message": (
+                    "❌ 設定錯誤：CWA_API_KEY 未設定，無法查詢天氣。"
+                    "請在部署的環境變數中設定中央氣象署開放資料授權碼。"
+                ),
+            }
+
         logger.info(f"Fetching CWA API: {dataset_id}")
         try:
-            # CWA API certificate has a known issue with missing Subject Key Identifier
-            async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            # TLS verification stays ON. It was previously disabled with a note about
+            # the CWA certificate missing a Subject Key Identifier; that no longer
+            # reproduces -- verified 2026-08-05 against
+            # opendata.cwa.gov.tw with verify=True: handshake succeeds and a real
+            # query returns HTTP 200 / success=true. Disabling verification would
+            # silently accept any certificate on this outbound call.
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 data = response.json()
