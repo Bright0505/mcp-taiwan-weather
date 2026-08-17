@@ -21,7 +21,7 @@ services:
     command: ["python", "-m", "server"]
     restart: unless-stopped
 
-  # MCP Weather HTTP Server - SSE mode (for MCPO)
+  # MCP Weather HTTP Server - Streamable HTTP (for Open WebUI native MCP)
   mcp-weather-http:
     build:
       context: .

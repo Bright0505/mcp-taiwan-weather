@@ -4,7 +4,7 @@
 
 支援兩種運行模式：
 - **STDIO 模式** — 直接整合 Claude Desktop
-- **HTTP 模式（Streamable HTTP）** — 透過 [MCPO](https://github.com/open-webui/mcpo) proxy
+- **HTTP 模式（Streamable HTTP）** — 供 Open WebUI 原生 MCP 連線直連
   或任何支援 MCP Streamable HTTP 的客戶端整合
 
 > **Transport**：2026-08-04 起改用 **Streamable HTTP**（端點 `/mcp/`），
@@ -86,7 +86,7 @@ PYTHONPATH=src .venv/bin/python src/main.py --http --port 8000
 cp .env.example .env
 # 編輯 .env，填入 CWA_API_KEY
 
-# HTTP 模式（Streamable HTTP，供 MCPO 使用）
+# HTTP 模式（Streamable HTTP，供 Open WebUI 原生 MCP 連線使用）
 docker-compose up mcp-weather-http
 
 # STDIO 模式
@@ -126,22 +126,18 @@ mcp-weather-http:
     start_period: 20s
 ```
 
-MCPO config（`mcpo-config.json`）加入：
+Open WebUI 新增一條原生 MCP 連線（Admin → Settings → Tools）：
 
-```json
-{
-  "mcpServers": {
-    "mcp-weather": {
-      "type": "streamable-http",
-      "url": "http://mcp-weather-http:8001/mcp/"
-    }
-  }
-}
-```
+| 欄位 | 值 |
+|---|---|
+| type | `mcp` |
+| id | `mcp-weather` |
+| url | `http://mcp-weather-http:8001/mcp/` |
 
-> **`type` 必填。** 只給 `url` 會落在 MCPO 自己註解為
-> `# Fallback for old SSE config` 的分支，該分支不傳 `auth`，
-> 且本模組已不再提供 `/sse/` 端點。
+再把 `server:mcp:mcp-weather` 加進要使用的模型的 `info.meta.toolIds`。
+
+> 📜 舊版這裡是改 `mcpo-config.json`。**MCPO 已於 2026-08-11 除役**，
+> 該檔案已無作用。本模組也不再提供 `/sse/` 端點。
 
 ---
 
@@ -186,9 +182,9 @@ MCPO config（`mcpo-config.json`）加入：
 
 > `mcp-weather-dev` 為容器名稱，需先確認容器已啟動：`docker-compose up mcp-weather`
 
-### MCPO（本機 HTTP 模式）
+### Open WebUI（本機 HTTP 模式）
 
-先啟動 HTTP server，再設定 MCPO：
+先啟動 HTTP server，再到 Open WebUI 新增原生 MCP 連線指向它：
 
 ```bash
 PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
@@ -213,7 +209,7 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 | `GET /health` | Docker | Healthcheck，回傳 `{"status":"ok"}` |
 | `GET /docs` | 人 | Swagger UI |
 | `GET /openapi.json` | 人 | OpenAPI 規格 |
-| `POST /mcp/` | MCPO / MCP 客戶端 | MCP over Streamable HTTP（由 ASGI mount 處理） |
+| `POST /mcp/` | Open WebUI / MCP 客戶端 | MCP over Streamable HTTP（由 ASGI mount 處理） |
 
 > `/mcp/*` 完全由 MCP SDK 的 `StreamableHTTPSessionManager` ASGI app 接管
 > （`app.mount("/mcp", mcp_server.create_asgi_app())`），FastAPI 不介入。
@@ -226,7 +222,7 @@ PYTHONPATH=src CWA_API_KEY=xxx .venv/bin/python src/main.py --http --port 8000
 > （呼叫工具時另帶 `Mcp-Name`），且 `params._meta` 需含
 > `io.modelcontextprotocol/protocolVersion`、`/clientInfo`、`/clientCapabilities`。
 > 缺信封回 `400 / -32602`；header 與 body 的 method 不一致回 `400 / -32020`。
-> handshake 世代（MCPO 目前走這條）維持原本的 `initialize` 流程，不受影響。
+> handshake 世代（Open WebUI 原生連線走這條）維持原本的 `initialize` 流程，不受影響。
 >
 > 舊的 `GET /sse/` 與 `POST /sse/messages` **已移除**，現在回 404。
 
